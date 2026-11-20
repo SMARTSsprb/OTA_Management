@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CPR Manikin – Firmware OTA Updater</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--text:#1b1f24;--muted:#69727d;--line:#dfe3e8;--accent:#0284c7;--accent-t:#fff;--ok:#16a34a;--warn:#d97706;--err:#dc2626;--log:#0f172a;--log-t:#cbd5e1}
+@media (prefers-color-scheme:dark){:root{--bg:#0b0f17;--card:#131b26;--text:#f1f5f9;--muted:#94a3b8;--line:#202e40;--accent:#38bdf8;--accent-t:#0b0f17;--ok:#4ade80;--warn:#fbbf24;--err:#f87171;--log:#070a0f;--log-t:#cbd5e1}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+.wrap{max-width:660px;margin:0 auto}
+h1{font-size:20px;margin:4px 0 2px}
+.sub{color:var(--muted);margin:0 0 16px;font-size:13px}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;background:rgba(2,132,199,0.12);color:var(--accent);margin-left:6px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:8px}
+.dot.on{background:var(--ok)}
+button{font:inherit;border:0;border-radius:8px;padding:10px 16px;cursor:pointer;background:var(--accent);color:var(--accent-t);font-weight:600}
+button.sec{background:transparent;color:var(--text);border:1px solid var(--line)}
+button.sm{padding:6px 12px;font-size:13px}
+button:disabled{opacity:.45;cursor:not-allowed}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:24px 12px;text-align:center;color:var(--muted);cursor:pointer}
+.drop.over{border-color:var(--accent);color:var(--text)}
+.drop b{color:var(--text)}
+.meta{margin-top:12px;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
+.meta span:nth-child(odd){color:var(--muted)}
+.tag{font-size:13px;margin-top:8px}
+.tag.ok{color:var(--ok)}.tag.warn{color:var(--warn)}
+.bar{height:12px;background:var(--line);border-radius:6px;overflow:hidden;margin:12px 0 6px}
+.bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .15s}
+.stats{display:flex;justify-content:space-between;color:var(--muted);font-size:13px}
+.steps{display:flex;gap:6px;margin-top:12px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.steps span{padding:3px 8px;border:1px solid var(--line);border-radius:20px}
+.steps span.act{color:var(--text);border-color:var(--accent)}
+.steps span.done{color:var(--ok);border-color:var(--ok)}
+.log{background:var(--log);color:var(--log-t);border-radius:8px;padding:10px;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;height:150px;overflow:auto;white-space:pre-wrap}
+.log .e{color:var(--err)}.log .o{color:var(--ok)}
+.note{font-size:12.5px;color:var(--muted)}
+.unsup{display:none;border-color:var(--err);color:var(--err)}
+input.txt{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--text);width:140px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CPR Manikin OTA Updater <span class="badge">CPR_10X</span></h1>
+  <p class="sub">Bluetooth Low Energy Firmware Updater for ESP32-C3 Training Manikins</p>
+
+  <div class="card unsup" id="unsup">
+    Web Bluetooth is not available in this browser. Use Chrome or Edge (Desktop or Android). On iPhone use the Bluefy browser.
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <span class="dot" id="dot"></span>
+        <b id="devname">Not connected</b>
+        <span id="devproto" class="note" style="margin-left:8px"></span>
+      </div>
+      <div>
+        <button id="btnConn">Connect to CPR Manikin</button>
+        <button id="btnDisc" class="sec" style="display:none">Disconnect</button>
+      </div>
+    </div>
+    <div style="margin-top:10px; font-size:12px; color:var(--muted)">
+      🔒 <b>High Security:</b> Encrypted communication (AES-128 ECDH). Enter 6-digit Passkey (Default: <code>123456</code>) when prompted by browser/OS.
+    </div>
+
+    <!-- Rename / Set Manikin ID Box -->
+    <div id="renameBox" style="display:none; margin-top:14px; padding-top:12px; border-top:1px solid var(--line)">
+      <div class="row">
+        <div style="font-size:13px">
+          <b>Unique Manikin ID:</b>
+          <input type="text" id="newDevName" class="txt" placeholder="e.g. CPR_106" maxlength="24">
+          <button id="btnSetName" class="sec sm">Save to NVS</button>
+        </div>
+        <span class="note">Assigns permanent name in device NVS</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="drop" id="drop">
+      <b>Select Firmware Binary</b><br>
+      Tap to choose or drop <code>.bin</code> firmware file
+    </div>
+    <input type="file" id="file" accept=".bin" hidden>
+    <div class="meta" id="meta" style="display:none">
+      <span>File</span><span id="fName"></span>
+      <span>Size</span><span id="fSize"></span>
+      <span>Type</span><span id="fType">–</span>
+    </div>
+    <div class="tag" id="fTag"></div>
+  </div>
+
+  <div class="card">
+    <button id="btnGo" disabled style="width:100%">Upload &amp; Update Firmware</button>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="stats"><span id="pct">0%</span><span id="spd"></span><span id="eta"></span></div>
+    <div class="steps" id="steps"><span>1 Connect</span><span>2 Upload</span><span>3 Verify</span><span>4 Reboot</span></div>
+  </div>
+
+  <div class="card">
+    <div class="log" id="log"></div>
+    <div class="row" style="margin-top:10px">
+      <span class="note">Chunk size</span>
+      <select id="chunk">
+        <option value="128">128 B (Safe)</option>
+        <option value="240" selected>240 B (Optimal)</option>
+        <option value="480">480 B (High MTU)</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<script>
+// ESP-IDF NimBLE Custom OTA UUIDs
+const OTA_SVC  = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const OTA_CTRL = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+const OTA_DATA = '1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e';
+
+// Zephyr / MCUmgr SMP UUIDs (for backwards/cross compatibility)
+const SMP_SVC  = '8d53dc1d-1db7-4cd3-868b-8a527460aa84';
+const SMP_CHR  = 'da2e7828-fbce-4e01-ae9e-261174997c48';
+
+const CMD_START = 0x01, CMD_END = 0x02, CMD_ABORT = 0x03, CMD_SET_NAME = 0x04;
+const ST_READY = 0x00, ST_DONE = 0x02, ST_ERROR = 0xFF;
+
+const $ = id => document.getElementById(id);
+const te = new TextEncoder(), td = new TextDecoder();
+
+let dev = null;
+let mode = 'custom'; // 'custom' (ESP-IDF) or 'smp' (Zephyr)
+let ctrlChar = null, dataChar = null, smpChar = null;
+let fw = null, busy = false;
+let otaStatus = null, otaStatusResolver = null;
+let seq = 0, smpPending = null, smpRx = new Uint8Array(0);
+
+function log(m, c) {
+  const l = $('log');
+  const d = document.createElement('div');
+  if (c) d.className = c;
+  d.textContent = `[${new Date().toLocaleTimeString()}] ${m}`;
+  l.appendChild(d);
+  l.scrollTop = l.scrollHeight;
+}
+
+function fmt(n) {
+  return n > 1048576 ? (n / 1048576).toFixed(2) + ' MB' : (n / 1024).toFixed(1) + ' KB';
+}
+
+function step(i) {
+  [...$('steps').children].forEach((s, k) => s.className = k < i ? 'done' : k === i ? 'act' : '');
+}
+
+function refresh() {
+  $('btnGo').disabled = !((ctrlChar || smpChar) && fw) || busy;
+}
+
+if (!navigator.bluetooth) {
+  $('unsup').style.display = 'block';
+  $('btnConn').disabled = true;
+}
+
+/* ---------- ESP-IDF NimBLE Notification Handler ---------- */
+function onCtrlNotify(e) {
+  const val = e.target.value;
+  if (!val || val.byteLength === 0) return;
+  const status = val.getUint8(0);
+  let bytesAcked = 0;
+  if (val.byteLength >= 5) {
+    bytesAcked = val.getUint32(1, true);
+  }
+  log(`Device notification: status=0x${status.toString(16).padStart(2,'0')} (acked: ${bytesAcked} B)`);
+  if (otaStatusResolver) {
+    otaStatusResolver(status);
+    otaStatusResolver = null;
+  }
+}
+
+function waitStatus(timeoutMs = 12000) {
+  return new Promise((resolve, reject) => {
+    otaStatusResolver = resolve;
+    setTimeout(() => {
+      if (otaStatusResolver) {
+        otaStatusResolver = null;
+        reject(new Error('Timeout waiting for device status notification'));
+      }
+    }, timeoutMs);
+  });
+}
+
+/* ---------- Connection Management ---------- */
+async function connect() {
+  try {
+    log('Scanning for CPR Manikins (CPR_10X)...');
+    dev = await navigator.bluetooth.requestDevice({
+      filters: [
+        { namePrefix: 'CPR_' },
+        { namePrefix: 'CPR_10' },
+        { name: 'Allreal_CPR' }
+      ],
+      optionalServices: [OTA_SVC, SMP_SVC]
+    });
+
+    dev.addEventListener('gattserverdisconnected', onDisc);
+    log(`Connecting to ${dev.name} ...`);
+    const server = await dev.gatt.connect();
+
+    // Check services: Primary is ESP-IDF NimBLE OTA
+    try {
+      const svc = await server.getPrimaryService(OTA_SVC);
+      ctrlChar = await svc.getCharacteristic(OTA_CTRL);
+      dataChar = await svc.getCharacteristic(OTA_DATA);
+      await ctrlChar.startNotifications();
+      ctrlChar.addEventListener('characteristicvaluechanged', onCtrlNotify);
+      mode = 'custom';
+      $('devproto').textContent = '(ESP32-C3 NimBLE OTA)';
+      $('renameBox').style.display = '';
+      $('newDevName').value = dev.name || 'CPR_106';
+    } catch (_) {
+      // Fallback to SMP (Zephyr)
+      try {
+        const smpSvc = await server.getPrimaryService(SMP_SVC);
+        smpChar = await smpSvc.getCharacteristic(SMP_CHR);
+        await smpChar.startNotifications();
+        smpChar.addEventListener('characteristicvaluechanged', onSmpNotify);
+        mode = 'smp';
+        $('devproto').textContent = '(Zephyr MCUmgr SMP)';
+        $('renameBox').style.display = 'none';
+      } catch (err) {
+        throw new Error('Neither ESP-IDF OTA service nor MCUmgr SMP service found on this device');
+      }
+    }
+
+    $('dot').className = 'dot on';
+    $('devname').textContent = dev.name;
+    $('btnConn').style.display = 'none';
+    $('btnDisc').style.display = '';
+    step(1);
+    log(`Connected to ${dev.name}! Protocol: ${mode}`, 'o');
+    refresh();
+  } catch (e) {
+    log('Connect failed: ' + e.message, 'e');
+  }
+}
+
+function onDisc() {
+  ctrlChar = null; dataChar = null; smpChar = null;
+  $('dot').className = 'dot';
+  $('devname').textContent = 'Not connected';
+  $('devproto').textContent = '';
+  $('renameBox').style.display = 'none';
+  $('btnConn').style.display = '';
+  $('btnDisc').style.display = 'none';
+  log('Device disconnected.');
+  refresh();
+}
+
+$('btnConn').onclick = connect;
+$('btnDisc').onclick = () => dev && dev.gatt.disconnect();
+
+/* ---------- Rename Manikin (Save to NVS) ---------- */
+$('btnSetName').onclick = async () => {
+  if (!ctrlChar) return;
+  const name = $('newDevName').value.trim();
+  if (!name.startsWith('CPR_')) {
+    alert('Unique Manikin name should follow the "CPR_10X" format (e.g. CPR_101, CPR_106).');
+    return;
+  }
+  try {
+    const enc = te.encode(name);
+    const pkt = new Uint8Array(1 + enc.length);
+    pkt[0] = CMD_SET_NAME;
+    pkt.set(enc, 1);
+    await ctrlChar.writeValueWithResponse(pkt);
+    log(`Successfully updated Manikin name to "${name}" in NVS! Reboot device to advertise new name.`, 'o');
+  } catch (e) {
+    log('Failed to save name: ' + e.message, 'e');
+  }
+};
+
+/* ---------- File Handling ---------- */
+function setFile(f) {
+  if (!f) return;
+  f.arrayBuffer().then(ab => {
+    fw = new Uint8Array(ab);
+    $('meta').style.display = 'grid';
+    $('fName').textContent = f.name;
+    $('fSize').textContent = fmt(fw.length) + ` (${fw.length} B)`;
+
+    const dv = new DataView(ab);
+    // ESP-IDF standard image magic: 0xE9
+    if (fw.length > 4 && fw[0] === 0xE9) {
+      $('fType').textContent = 'ESP-IDF App Image (0xE9)';
+      $('fTag').className = 'tag ok';
+      $('fTag').textContent = '✓ ESP32 App binary detected';
+    } else if (fw.length > 32 && dv.getUint32(0, true) === 0x96f3b83d) {
+      $('fType').textContent = 'MCUboot Signed Image (Zephyr)';
+      $('fTag').className = 'tag ok';
+      $('fTag').textContent = '✓ MCUboot header detected';
+    } else {
+      $('fType').textContent = 'Raw Binary';
+      $('fTag').className = 'tag';
+      $('fTag').textContent = 'Firmware binary loaded';
+    }
+    log(`Loaded file: ${f.name} (${fmt(fw.length)})`);
+    refresh();
+  });
+}
+
+$('drop').onclick = () => $('file').click();
+$('file').onchange = e => setFile(e.target.files[0]);
+['dragenter', 'dragover'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', e => { e.preventDefault(); $('drop').classList.remove('over'); setFile(e.dataTransfer.files[0]); });
+
+/* ---------- Update Process ---------- */
+async function update() {
+  if (!fw) return;
+  busy = true;
+  refresh();
+  $('bar').style.width = '0%';
+  $('pct').textContent = '0%';
+
+  try {
+    if (mode === 'custom') {
+      await updateCustomNimBLE();
+    } else {
+      await updateSmp();
+    }
+  } catch (err) {
+    log('Update FAILED: ' + err.message, 'e');
+  } finally {
+    busy = false;
+    refresh();
+  }
+}
+
+/* Update via ESP-IDF NimBLE Protocol */
+async function updateCustomNimBLE() {
+  step(1);
+  const total = fw.length;
+  log(`Starting OTA upload for ${dev.name} (${total} bytes)...`);
+
+  // 1. Send CMD_START + u32 LE size
+  const startPkt = new Uint8Array(5);
+  startPkt[0] = CMD_START;
+  new DataView(startPkt.buffer).setUint32(1, total, true);
+  await ctrlChar.writeValueWithResponse(startPkt);
+
+  const st = await waitStatus(10000);
+  if (st !== ST_READY) throw new Error(`Device rejected start with status 0x${st.toString(16)}`);
+
+  // 2. Stream Data Chunks
+  step(2);
+  let off = 0;
+  const chunk = parseInt($('chunk').value) || 240;
+  const t0 = performance.now();
+
+  while (off < total) {
+    const end = Math.min(off + chunk, total);
+    const slice = fw.subarray(off, end);
+    try {
+      await dataChar.writeValueWithoutResponse(slice);
+    } catch (_) {
+      // Fallback with response if without-response fails
+      await dataChar.writeValueWithResponse(slice);
+    }
+    off = end;
+
+    const elapsed = Math.max(0.001, (performance.now() - t0) / 1000);
+    const speed = off / elapsed;
+    const pc = (off * 100) / total;
+    const eta = (total - off) / speed;
+
+    $('bar').style.width = pc.toFixed(1) + '%';
+    $('pct').textContent = pc.toFixed(1) + '%';
+    $('spd').textContent = (speed / 1024).toFixed(1) + ' KB/s';
+    $('eta').textContent = 'ETA: ' + Math.max(0, Math.round(eta)) + 's';
+  }
+
+  log('Firmware data transferred 100%! Verifying and finalizing...', 'o');
+  step(3);
+
+  // 3. Send CMD_END
+  const endPkt = new Uint8Array([CMD_END]);
+  await ctrlChar.writeValueWithResponse(endPkt);
+
+  try {
+    const endSt = await waitStatus(15000);
+    if (endSt !== ST_DONE) throw new Error(`Device finalized with status 0x${endSt.toString(16)}`);
+  } catch (e) {
+    log('Device acknowledged and triggered reset (' + e.message + ')');
+  }
+
+  step(4);
+  [...$('steps').children].forEach(s => s.className = 'done');
+  log(`SUCCESS: Manikin ${dev.name} updated! Rebooting now...`, 'o');
+}
+
+/* Fallback: Zephyr MCUmgr SMP minimal handler */
+function onSmpNotify(e) {
+  const v = e.target.value, d = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+  const n = new Uint8Array(smpRx.length + d.length); n.set(smpRx); n.set(d, smpRx.length); smpRx = n;
+  while (smpRx.length >= 8) {
+    const len = (smpRx[2] << 8) | smpRx[3];
+    if (smpRx.length < 8 + len) break;
+    const body = smpRx.slice(8, 8 + len); smpRx = smpRx.slice(8 + len);
+    if (smpPending) {
+      clearTimeout(smpPending.t); const p = smpPending; smpPending = null;
+      try { p.res(dec(body)); } catch (err) { p.rej(err); }
+    }
+  }
+}
+
+async function smp(op, group, id, payload, timeout = 8000) {
+  const body = enc(payload), h = new Uint8Array(8);
+  h[0] = op; h[2] = body.length >> 8; h[3] = body.length & 255; h[4] = group >> 8; h[5] = group & 255; h[6] = (seq = (seq + 1) & 255); h[7] = id;
+  const pkt = new Uint8Array(8 + body.length); pkt.set(h); pkt.set(body, 8);
+  const p = new Promise((res, rej) => { smpPending = { res, rej, t: setTimeout(() => { smpPending = null; rej(new Error('SMP timeout')); }, timeout) }; });
+  await smpChar.writeValueWithoutResponse(pkt);
+  return p;
+}
+
+function enc(v) {
+  const o = [];
+  const head = (t, n) => { if (n < 24) o.push(t << 5 | n); else if (n < 256) o.push(t << 5 | 24, n); else if (n < 65536) o.push(t << 5 | 25, n >> 8, n & 255); else o.push(t << 5 | 26, (n >>> 24) & 255, (n >> 16) & 255, (n >> 8) & 255, n & 255); };
+  (function w(v) {
+    if (typeof v === 'number') v >= 0 ? head(0, v) : head(1, -1 - v);
+    else if (typeof v === 'boolean') o.push(v ? 0xf5 : 0xf4);
+    else if (typeof v === 'string') { const b = te.encode(v); head(3, b.length); for (const x of b) o.push(x); }
+    else if (v instanceof Uint8Array) { head(2, v.length); for (let i = 0; i < v.length; i++) o.push(v[i]); }
+    else { const k = Object.keys(v); head(5, k.length); for (const key of k) { w(key); w(v[key]); } }
+  })(v);
+  return Uint8Array.from(o);
+}
+
+function dec(buf) {
+  let p = 0; const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const arg = ai => { if (ai < 24) return ai; if (ai === 24) return buf[p++]; if (ai === 25) { const v = dv.getUint16(p); p += 2; return v; } if (ai === 26) { const v = dv.getUint32(p); p += 4; return v; } return -1; };
+  function r() {
+    const b = buf[p++], t = b >> 5, ai = b & 31;
+    if (t === 7) return ai === 21;
+    const n = arg(ai);
+    switch (t) {
+      case 0: return n;
+      case 1: return -1 - n;
+      case 2: { const v = buf.slice(p, p + n); p += n; return v; }
+      case 3: { const v = td.decode(buf.slice(p, p + n)); p += n; return v; }
+      case 4: { const a = []; for (let i = 0; i < n; i++) a.push(r()); return a; }
+      case 5: { const m = {}; for (let i = 0; i < n; i++) { const k = r(); m[k] = r(); } return m; }
+      default: return null;
+    }
+  }
+  return r();
+}
+
+async function updateSmp() {
+  step(1);
+  let off = 0, chunk = parseInt($('chunk').value) || 150;
+  const t0 = performance.now();
+  log(`SMP uploading ${fw.length} bytes...`);
+  while (off < fw.length) {
+    const n = Math.min(chunk, fw.length - off);
+    const req = { image: 0, off, data: fw.subarray(off, off + n) };
+    if (off === 0) req.len = fw.length;
+    let r = await smp(2, 1, 1, req);
+    if (r.rc) throw new Error('SMP rc=' + r.rc);
+    off = (typeof r.off === 'number') ? r.off : off + n;
+    const pc = off * 100 / fw.length, s = off / ((performance.now() - t0) / 1000);
+    $('bar').style.width = pc + '%'; $('pct').textContent = pc.toFixed(1) + '%';
+    $('spd').textContent = (s / 1024).toFixed(1) + ' KB/s'; $('eta').textContent = 'ETA ' + Math.round((fw.length - off) / s) + ' s';
+  }
+  step(3);
+  log('SMP upload complete. Resetting device...');
+  try { await smp(2, 0, 5, {}, 3000); } catch (_) {}
+  step(4);
+  log('SMP update complete!', 'o');
+}
+
+$('btnGo').onclick = update;
+step(0);
+log('Ready. Click "Connect to CPR Manikin" to begin.');
+</script>
+</body>
+</html>

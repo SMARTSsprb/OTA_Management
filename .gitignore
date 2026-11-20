@@ -1,0 +1,17 @@
+# Build output and temporary directories
+build/
+sdkconfig
+sdkconfig.old
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+
+# Editor & OS artifacts
+.idea/
+*.swp
+*~
+Thumbs.db
