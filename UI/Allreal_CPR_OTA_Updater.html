@@ -79,6 +79,17 @@ input.txt{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radi
         <span class="note">Assigns permanent name in device NVS</span>
       </div>
     </div>
+
+    <!-- Switch to OTA Mode Box (shown when connected to CPR_10X in normal training mode) -->
+    <div id="switchOtaBox" style="display:none; margin-top:14px; padding-top:12px; border-top:1px solid var(--line)">
+      <div class="row">
+        <div style="font-size:13px">
+          <b>Status:</b> <span style="color:var(--ok)">Normal Training Mode (CPR_10X)</span>
+          <button id="btnSwitchOta" class="sm" style="margin-left:12px; background:#e07a5f">🔄 Switch to OTA Mode (Manikin_103)</button>
+        </div>
+        <span class="note">Reboots device into OTA updater mode</span>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -125,6 +136,11 @@ const OTA_DATA = '1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e';
 const SMP_SVC  = '8d53dc1d-1db7-4cd3-868b-8a527460aa84';
 const SMP_CHR  = 'da2e7828-fbce-4e01-ae9e-261174997c48';
 
+// Nordic UART Service (NUS) UUIDs for Normal CPR Training Mode
+const NUS_SVC  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_RX   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_TX   = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
 const CMD_START = 0x01, CMD_END = 0x02, CMD_ABORT = 0x03, CMD_SET_NAME = 0x04;
 const ST_READY = 0x00, ST_DONE = 0x02, ST_ERROR = 0xFF;
 
@@ -132,8 +148,8 @@ const $ = id => document.getElementById(id);
 const te = new TextEncoder(), td = new TextDecoder();
 
 let dev = null;
-let mode = 'custom'; // 'custom' (ESP-IDF) or 'smp' (Zephyr)
-let ctrlChar = null, dataChar = null, smpChar = null;
+let mode = 'custom'; // 'custom' (ESP-IDF), 'smp' (Zephyr), or 'nus' (CPR Training Mode)
+let ctrlChar = null, dataChar = null, smpChar = null, nusRxChar = null;
 let fw = null, busy = false;
 let otaStatus = null;
 let seq = 0, smpPending = null, smpRx = new Uint8Array(0);
@@ -216,7 +232,7 @@ async function connect() {
         { namePrefix: 'CPR_10' },
         { name: 'Allreal_CPR' }
       ],
-      optionalServices: [OTA_SVC, SMP_SVC]
+      optionalServices: [OTA_SVC, SMP_SVC, NUS_SVC]
     });
 
     dev.addEventListener('gattserverdisconnected', onDisc);
@@ -233,19 +249,32 @@ async function connect() {
       mode = 'custom';
       $('devproto').textContent = '(ESP32-C3 NimBLE OTA)';
       $('renameBox').style.display = '';
+      $('switchOtaBox').style.display = 'none';
       $('newDevName').value = dev.name || 'CPR_106';
     } catch (_) {
-      // Fallback to SMP (Zephyr)
+      // Check if device is in CPR Normal Training Mode (NUS)
       try {
-        const smpSvc = await server.getPrimaryService(SMP_SVC);
-        smpChar = await smpSvc.getCharacteristic(SMP_CHR);
-        await smpChar.startNotifications();
-        smpChar.addEventListener('characteristicvaluechanged', onSmpNotify);
-        mode = 'smp';
-        $('devproto').textContent = '(Zephyr MCUmgr SMP)';
+        const nusSvc = await server.getPrimaryService(NUS_SVC);
+        nusRxChar = await nusSvc.getCharacteristic(NUS_RX);
+        mode = 'nus';
+        $('devproto').textContent = '(CPR Training Mode - NUS)';
         $('renameBox').style.display = 'none';
-      } catch (err) {
-        throw new Error('Neither ESP-IDF OTA service nor MCUmgr SMP service found on this device');
+        $('switchOtaBox').style.display = '';
+        log(`Connected to ${dev.name} in Normal Training Mode! Click "Switch to OTA Mode" above to enter firmware update mode.`, 'o');
+      } catch (__) {
+        // Fallback to SMP (Zephyr)
+        try {
+          const smpSvc = await server.getPrimaryService(SMP_SVC);
+          smpChar = await smpSvc.getCharacteristic(SMP_CHR);
+          await smpChar.startNotifications();
+          smpChar.addEventListener('characteristicvaluechanged', onSmpNotify);
+          mode = 'smp';
+          $('devproto').textContent = '(Zephyr MCUmgr SMP)';
+          $('renameBox').style.display = 'none';
+          $('switchOtaBox').style.display = 'none';
+        } catch (err) {
+          throw new Error('Neither ESP-IDF OTA service, CPR NUS service, nor MCUmgr SMP service found on this device');
+        }
       }
     }
 
@@ -262,11 +291,12 @@ async function connect() {
 }
 
 function onDisc() {
-  ctrlChar = null; dataChar = null; smpChar = null;
+  ctrlChar = null; dataChar = null; smpChar = null; nusRxChar = null;
   $('dot').className = 'dot';
   $('devname').textContent = 'Not connected';
   $('devproto').textContent = '';
   $('renameBox').style.display = 'none';
+  $('switchOtaBox').style.display = 'none';
   $('btnConn').style.display = '';
   $('btnDisc').style.display = 'none';
   log('Device disconnected.');
@@ -275,6 +305,23 @@ function onDisc() {
 
 $('btnConn').onclick = connect;
 $('btnDisc').onclick = () => dev && dev.gatt.disconnect();
+
+/* ---------- Switch to OTA Mode (from Training Mode) ---------- */
+$('btnSwitchOta').onclick = async () => {
+  if (!nusRxChar) return;
+  try {
+    log('Sending @OTA command to reboot device into OTA mode (Manikin_103)...');
+    await nusRxChar.writeValueWithoutResponse(te.encode('@OTA\n'));
+    log('Reboot command sent! Device is switching to Manikin_103...', 'o');
+    $('switchOtaBox').style.display = 'none';
+    if (dev && dev.gatt.connected) {
+      dev.gatt.disconnect();
+    }
+    log('Now click "Connect to CPR Manikin" and select "Manikin_103" to upload firmware.', 'o');
+  } catch (err) {
+    log('Failed to send @OTA: ' + err.message, 'e');
+  }
+};
 
 /* ---------- Rename Manikin (Save to NVS) ---------- */
 $('btnSetName').onclick = async () => {
