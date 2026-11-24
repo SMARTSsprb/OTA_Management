@@ -111,19 +111,27 @@ async def resolve_target_device(target_name, timeout=5.0):
         sys.exit("[ERROR] Multiple manikins found. Please specify target name via: python ota_client.py <fw.bin> <CPR_10X>")
 
 
-async def set_manikin_name(device, new_name):
+async def set_manikin_name(device, new_name, passkey="123456"):
     """Connect and configure persistent unique name in NVS."""
     print(f"[CONNECT] Connecting to {device.name} [{device.address}] to set name to '{new_name}'...")
+    print(f"[SECURITY] Required BLE Pairing PIN / Passkey: {passkey}")
     async with BleakClient(device) as client:
         if not client.is_connected:
             sys.exit("[ERROR] Connection failed.")
+
+        try:
+            if hasattr(client, "pair"):
+                print(f"[SECURITY] Initiating pairing... If OS prompts for PIN, enter: {passkey}")
+                await client.pair()
+        except Exception as e:
+            print(f"[NOTE] Pairing status: {e}")
 
         payload = bytes([CMD_SET_NAME]) + new_name.encode("utf-8")
         await client.write_gatt_char(CTRL_UUID, payload, response=True)
         print(f"[SUCCESS] Unique Manikin name updated to '{new_name}' in NVS! Reboot device to advertise new name.")
 
 
-async def perform_ota(device, fw_path, fast_mode=False):
+async def perform_ota(device, fw_path, fast_mode=False, passkey="123456"):
     """Upload firmware binary over BLE."""
     with open(fw_path, "rb") as f:
         fw_data = f.read()
@@ -131,6 +139,8 @@ async def perform_ota(device, fw_path, fast_mode=False):
     total_bytes = len(fw_data)
     print(f"[FILE] Loaded firmware: {fw_path} ({total_bytes} bytes / {total_bytes/1024:.1f} KB)")
     print(f"[CONNECT] Connecting to Manikin {device.name} [{device.address}]...")
+    print(f"[SECURITY] Required BLE Pairing PIN / Passkey: {passkey}")
+    print(f"           (If your OS prompts for Bluetooth PIN/Passkey, enter: {passkey})")
 
     status_queue = asyncio.Queue()
 
@@ -147,6 +157,14 @@ async def perform_ota(device, fw_path, fast_mode=False):
     async with BleakClient(device) as client:
         if not client.is_connected:
             sys.exit("[ERROR] Failed to connect to device.")
+
+        # Trigger BLE pairing if supported by platform
+        try:
+            if hasattr(client, "pair"):
+                print(f"[SECURITY] Pairing with device... Enter PIN [{passkey}] if prompted by OS.")
+                await client.pair()
+        except Exception as e:
+            print(f"[NOTE] Pairing status: {e}")
 
         # Subscribe to Control notifications
         await client.start_notify(CTRL_UUID, on_ctrl_notify)
@@ -208,6 +226,7 @@ def main():
     parser.add_argument("--fast", action="store_true", help="Fast upload mode (write without response)")
     parser.add_argument("--scan", action="store_true", help="Scan and list all detected CPR Manikins")
     parser.add_argument("--set-name", dest="new_name", help="Set and persist unique Manikin name into NVS (e.g. CPR_106)")
+    parser.add_argument("--passkey", default="123456", help="6-digit BLE secure pairing PIN (default: 123456)")
 
     args = parser.parse_args()
     target_name = args.device_flag or args.device_arg
@@ -232,7 +251,7 @@ def main():
     if args.new_name:
         async def run_set_name():
             dev = await resolve_target_device(target_name, timeout=5.0)
-            await set_manikin_name(dev, args.new_name)
+            await set_manikin_name(dev, args.new_name, passkey=args.passkey)
         asyncio.run(run_set_name())
         return
 
@@ -242,7 +261,7 @@ def main():
 
     async def run_update():
         dev = await resolve_target_device(target_name, timeout=5.0)
-        await perform_ota(dev, args.file, fast_mode=args.fast)
+        await perform_ota(dev, args.file, fast_mode=args.fast, passkey=args.passkey)
 
     asyncio.run(run_update())
 
