@@ -135,7 +135,7 @@ let dev = null;
 let mode = 'custom'; // 'custom' (ESP-IDF) or 'smp' (Zephyr)
 let ctrlChar = null, dataChar = null, smpChar = null;
 let fw = null, busy = false;
-let otaStatus = null, otaStatusResolver = null;
+let otaStatus = null;
 let seq = 0, smpPending = null, smpRx = new Uint8Array(0);
 
 function log(m, c) {
