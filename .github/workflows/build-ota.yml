@@ -37,7 +37,7 @@ jobs:
         run: |
           . /opt/esp/idf/export.sh
           echo "=== 1. Building OTA Maintenance Firmware (ota_0) ==="
-          cd OTA_FIrmware
+          cd "$GITHUB_WORKSPACE/OTA_FIrmware"
           idf.py set-target esp32c3
           idf.py build
           cd build
@@ -45,7 +45,7 @@ jobs:
           ls -lh allreal_cpr_ota_merged_0x0.bin
 
           echo "=== 2. Building CPR Training Application (ota_1) ==="
-          cd ../../CPR_App
+          cd "$GITHUB_WORKSPACE/CPR_App"
           idf.py set-target esp32c3
           idf.py build
           ls -lh build/cpr_app.bin

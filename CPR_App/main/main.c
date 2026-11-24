@@ -6,7 +6,6 @@
  * Identity: Advertises as "CPR_103" (or configured ID)
  * Services:
  *   - Nordic UART Service (NUS) for Real-Time Telemetry & App Control
- *   - Battery Service (0x180F)
  *
  * Maintenance / OTA Switching:
  *   - Wireless: Write "@OTA" to NUS RX -> switches boot partition to ota_0 (Manikin_103) & reboots.
@@ -29,6 +28,8 @@
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
+#include "host/ble_sm.h"
+#include "host/util/util.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 
@@ -173,51 +174,48 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             conn_handle = BLE_HS_CONN_HANDLE_NONE;
             start_advertising();
         }
-        return 0;
+        break;
 
     case BLE_GAP_EVENT_DISCONNECT:
         ESP_LOGI(TAG, "BLE disconnected, reason=%d", event->disconnect.reason);
         conn_handle = BLE_HS_CONN_HANDLE_NONE;
         s_tx_notify_enabled = false;
         start_advertising();
-        return 0;
+        break;
 
     case BLE_GAP_EVENT_SUBSCRIBE:
         if (event->subscribe.attr_handle == nus_tx_val_handle) {
-            s_tx_notify_enabled = event->subscribe.cur_notify;
+            s_tx_notify_enabled = (event->subscribe.cur_notify != 0);
             ESP_LOGI(TAG, "NUS TX notifications %s", s_tx_notify_enabled ? "ENABLED" : "DISABLED");
         }
-        return 0;
+        break;
 
     default:
-        return 0;
+        break;
     }
+    return 0;
 }
 
 static void start_advertising(void)
 {
-    struct ble_gap_adv_params adv_params;
-    struct ble_hs_adv_fields fields;
-    int rc;
+    struct ble_hs_adv_fields adv = {0};
+    adv.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+    adv.name = (uint8_t *)s_device_name;
+    adv.name_len = strlen(s_device_name);
+    adv.name_is_complete = 1;
 
-    memset(&fields, 0, sizeof(fields));
-    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-    fields.name = (uint8_t *)s_device_name;
-    fields.name_len = strlen(s_device_name);
-    fields.name_is_complete = 1;
-
-    rc = ble_gap_adv_set_fields(&fields);
+    int rc = ble_gap_adv_set_fields(&adv);
     if (rc != 0) {
         ESP_LOGE(TAG, "adv_set_fields error: %d", rc);
         return;
     }
 
-    memset(&adv_params, 0, sizeof(adv_params));
-    adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
-    adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    struct ble_gap_adv_params p = {0};
+    p.conn_mode = BLE_GAP_CONN_MODE_UND;
+    p.disc_mode = BLE_GAP_DISC_MODE_GEN;
 
-    rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER, &adv_params, gap_event, NULL);
-    if (rc != 0) {
+    rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER, &p, gap_event, NULL);
+    if (rc != 0 && rc != BLE_HS_EALREADY) {
         ESP_LOGE(TAG, "adv_start error: %d", rc);
         return;
     }
@@ -226,12 +224,11 @@ static void start_advertising(void)
 
 static void on_sync(void)
 {
-    ble_hs_util_ensure_addr(0);
     ble_hs_id_infer_auto(0, &own_addr_type);
     start_advertising();
 }
 
-static void nimble_host_task(void *param)
+static void host_task(void *param)
 {
     nimble_port_run();
     nimble_port_freertos_deinit();
@@ -254,7 +251,10 @@ static void cpr_telemetry_task(void *param)
             ann.deviceID[0] = s_device_mac[3];
             ann.deviceID[1] = s_device_mac[4];
             ann.deviceID[2] = s_device_mac[5];
-            strncpy(ann.manikinName, "103", sizeof(ann.manikinName));
+            ann.manikinName[0] = '1';
+            ann.manikinName[1] = '0';
+            ann.manikinName[2] = '3';
+            ann.manikinName[3] = '\0';
             ann.manikinType = MANIKIN_TYPE_DEFAULT;
             ann.checksum = cpr_calc_checksum((const uint8_t *)&ann, sizeof(ann) - 1u);
 
@@ -317,7 +317,7 @@ void app_main(void)
     ble_svc_gap_device_name_set(s_device_name);
     ble_hs_cfg.sync_cb = on_sync;
 
-    nimble_port_freertos_init(nimble_host_task);
+    nimble_port_freertos_init(host_task);
 
     /* 6. Start CPR Telemetry Task */
     xTaskCreate(cpr_telemetry_task, "cpr_telemetry", 4096, NULL, 5, NULL);
