@@ -32,20 +32,16 @@ jobs:
           echo "Building firmware for Manikin ID: CPR_${MANIKIN_ID}"
           sed -i "s/#define CONFIG_CPR_MANIKIN_ID .*/#define CONFIG_CPR_MANIKIN_ID \"${MANIKIN_ID}\"/g" OTA_FIrmware/main/main.c
 
-      - name: Build with ESP-IDF
+      - name: Build and Package with ESP-IDF
         shell: bash
         run: |
           . /opt/esp/idf/export.sh
           cd OTA_FIrmware
           idf.py set-target esp32c3
           idf.py build
-
-      - name: Generate Merged 0x0 Binary
-        shell: bash
-        run: |
-          cd OTA_FIrmware/build
+          cd build
           esptool.py --chip esp32c3 merge_bin -o allreal_cpr_ota_merged_0x0.bin @flash_args
-          ls -la allreal_cpr_ota_merged_0x0.bin
+          ls -lh allreal_cpr_ota_merged_0x0.bin
 
       - name: Upload Firmware Artifacts
         uses: actions/upload-artifact@v4
@@ -54,6 +50,7 @@ jobs:
           path: |
             OTA_FIrmware/build/bootloader/bootloader.bin
             OTA_FIrmware/build/partition_table/partition-table.bin
+            OTA_FIrmware/build/ota_data_initial.bin
             OTA_FIrmware/build/allreal_cpr_ota.bin
             OTA_FIrmware/build/allreal_cpr_ota_merged_0x0.bin
           if-no-files-found: error
