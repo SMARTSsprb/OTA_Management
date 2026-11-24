@@ -205,7 +205,7 @@ static int ctrl_access(uint16_t ch, uint16_t ah,
             notify_status(ST_ERROR);
             return 0;
         }
-        esp_err_t err = esp_ota_begin(ota_part, ota_total, &ota_handle);
+        esp_err_t err = esp_ota_begin(ota_part, OTA_SIZE_UNKNOWN, &ota_handle);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "esp_ota_begin: %s", esp_err_to_name(err));
             notify_status(ST_ERROR);

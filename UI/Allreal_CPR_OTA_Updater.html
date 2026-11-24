@@ -187,7 +187,7 @@ function onCtrlNotify(e) {
   }
 }
 
-function waitStatus(timeoutMs = 12000) {
+function waitStatus(timeoutMs = 30000) {
   if (statusQueue.length > 0) {
     return Promise.resolve(statusQueue.shift());
   }
@@ -365,7 +365,7 @@ async function updateCustomNimBLE() {
   startPkt[0] = CMD_START;
   new DataView(startPkt.buffer).setUint32(1, total, true);
 
-  const startPromise = waitStatus(10000);
+  const startPromise = waitStatus(30000);
   await ctrlChar.writeValueWithResponse(startPkt);
   const st = await startPromise;
   if (st !== ST_READY) throw new Error(`Device rejected start with status 0x${st.toString(16)}`);
@@ -406,7 +406,7 @@ async function updateCustomNimBLE() {
 
   // 3. Send CMD_END
   const endPkt = new Uint8Array([CMD_END]);
-  const endPromise = waitStatus(15000);
+  const endPromise = waitStatus(30000);
   await ctrlChar.writeValueWithResponse(endPkt);
 
   try {
