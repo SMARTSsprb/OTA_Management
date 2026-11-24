@@ -1,0 +1,59 @@
+name: Build ESP32-C3 OTA Firmware
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      manikin_id:
+        description: 'Manikin ID (e.g. 103, 101, 106)'
+        required: false
+        default: '103'
+
+jobs:
+  build:
+    name: Build & Package ESP32-C3 Firmware
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.3
+    steps:
+      - name: Git Safe Directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        shell: bash
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set Manikin ID
+        shell: bash
+        run: |
+          MANIKIN_ID="${{ github.event.inputs.manikin_id || '103' }}"
+          echo "Building firmware for Manikin ID: CPR_${MANIKIN_ID}"
+          sed -i "s/#define CONFIG_CPR_MANIKIN_ID .*/#define CONFIG_CPR_MANIKIN_ID \"${MANIKIN_ID}\"/g" OTA_FIrmware/main/main.c
+
+      - name: Build with ESP-IDF
+        shell: bash
+        run: |
+          . /opt/esp/idf/export.sh
+          cd OTA_FIrmware
+          idf.py set-target esp32c3
+          idf.py build
+
+      - name: Generate Merged 0x0 Binary
+        shell: bash
+        run: |
+          cd OTA_FIrmware/build
+          esptool.py --chip esp32c3 merge_bin -o allreal_cpr_ota_merged_0x0.bin @flash_args
+          ls -la allreal_cpr_ota_merged_0x0.bin
+
+      - name: Upload Firmware Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CPR_OTA_Firmware_ESP32C3
+          path: |
+            OTA_FIrmware/build/bootloader/bootloader.bin
+            OTA_FIrmware/build/partition_table/partition-table.bin
+            OTA_FIrmware/build/allreal_cpr_ota.bin
+            OTA_FIrmware/build/allreal_cpr_ota_merged_0x0.bin
+          if-no-files-found: error

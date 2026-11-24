@@ -5,7 +5,7 @@ Secure Bluetooth Low Energy (BLE) Over-The-Air (OTA) firmware update system for 
 ## Features
 
 - **Unique Manikin Identification (`CPR_10X`):**
-  - Manikin name format: `CPR_10X` (e.g., `CPR_101`, `CPR_102`, `CPR_106`).
+  - Manikin name format: `CPR_10X` (e.g., `CPR_101`, `CPR_102`, `CPR_103`, `CPR_106`).
   - Persistent NVS storage for customized manikin names.
   - Automatic hardware MAC fallback ensures zero name collisions across multiple units.
 - **High Security & Encrypted Communication:**
@@ -16,16 +16,21 @@ Secure Bluetooth Low Energy (BLE) Over-The-Air (OTA) firmware update system for 
 - **Dual Client Tools:**
   - **Python CLI Tool (`ota_client.py`):** Scan, target specific manikin, upload firmware with live speed/ETA, and remotely configure unique names.
   - **Web Bluetooth Updater (`UI/Allreal_CPR_OTA_Updater.html`):** In-browser zero-install OTA updater supporting Chrome, Edge, and Bluefy with native passkey pairing.
+- **Automated Cloud CI/CD:**
+  - Pre-configured GitHub Actions workflow automatically builds the OTA firmware and packages a single `allreal_cpr_ota_merged_0x0.bin` ready to flash.
 
 ## Directory Structure
 
 ```text
 OTA_Management/
+├── .github/
+│   └── workflows/
+│       └── build-ota.yml        # Automated ESP-IDF GitHub Actions builder
 ├── OTA_FIrmware/
 │   ├── main/
-│   │   └── CMakeLists.txt        # Component registration
+│   │   ├── CMakeLists.txt       # Component registration
+│   │   └── main.c               # NimBLE GATT OTA driver + Security Manager
 │   ├── CMakeLists.txt           # ESP-IDF project definition
-│   ├── main.c                   # NimBLE GATT OTA driver + Security Manager
 │   ├── ota_client.py            # Python Bleak OTA client
 │   ├── partitions.csv           # 4MB dual-slot OTA partition table
 │   └── sdkconfig.defaults       # ESP32-C3 NimBLE & Security settings
@@ -36,16 +41,39 @@ OTA_Management/
 
 ## Quick Start
 
-### 1. Flash OTA Firmware to ESP32-C3
+### 1. Build and Flash OTA Firmware (First Time Setup)
 
+#### Option A: Download from GitHub Actions (Recommended)
+1. Go to your GitHub repository: `https://github.com/SMARTSsprb/OTA_Management/actions`
+2. Select the latest **Build ESP32-C3 OTA Firmware** workflow run.
+3. Download the `CPR_OTA_Firmware_ESP32C3` artifact.
+4. Extract the zip file and flash the merged binary directly to the board:
+   ```bash
+   python -m esptool --chip esp32c3 -p COM14 write-flash 0x0 allreal_cpr_ota_merged_0x0.bin
+   ```
+
+#### Option B: Build Locally with ESP-IDF
 ```bash
 cd OTA_FIrmware
 idf.py set-target esp32c3
 idf.py build
-idf.py -p COMx flash monitor
+idf.py -p COM14 flash monitor
 ```
 
-### 2. Update Firmware via Python Client
+---
+
+### 2. Update Firmware via Web Browser (Zero-Install)
+
+1. Open `UI/Allreal_CPR_OTA_Updater.html` in Google Chrome or Microsoft Edge.
+2. Click **Connect to CPR Manikin**.
+3. Select your manikin from the list (e.g., `CPR_103`).
+4. When prompted by Windows/Chrome for the Bluetooth passkey, enter: **`123456`**.
+5. Drag and drop your target application `.bin` file (e.g. `zephyr_103.bin`).
+6. Click **Upload & Update Firmware**.
+
+---
+
+### 3. Update Firmware via Python CLI
 
 ```bash
 pip install bleak
@@ -53,16 +81,6 @@ pip install bleak
 # Discover all active CPR Manikins
 python ota_client.py --scan
 
-# Target specific manikin
-python ota_client.py app_firmware.bin CPR_106 --fast
+# Target specific manikin with Passkey
+python ota_client.py zephyr_103.bin CPR_103 --passkey 123456 --fast
 ```
-
-When prompted by the OS, enter the 6-digit passkey: `123456`.
-
-### 3. Update Firmware via Web Browser
-
-1. Open `UI/Allreal_CPR_OTA_Updater.html` in Chrome or Edge.
-2. Click **Connect to CPR Manikin**.
-3. Select your manikin from the list (e.g., `CPR_106`).
-4. Enter the passkey `123456` in the Bluetooth pairing popup.
-5. Drop your `.bin` firmware file and click **Upload & Update Firmware**.
