@@ -41,14 +41,14 @@
 #define CPR_DEVICE_PREFIX "CPR_"
 
 #ifndef CONFIG_CPR_MANIKIN_ID
-#define CONFIG_CPR_MANIKIN_ID "106" /* Default ID; change to 101, 102, etc. or "AUTO" */
+#define CONFIG_CPR_MANIKIN_ID "103" /* Manikin 103 */
 #endif
 
 #ifndef CONFIG_CPR_OTA_PASSKEY
 #define CONFIG_CPR_OTA_PASSKEY 123456 /* Default 6-digit secure passkey */
 #endif
 
-static char s_device_name[32] = "CPR_106";
+static char s_device_name[32] = "CPR_103";
 static uint8_t s_device_mac[6] = {0};
 static uint32_t s_passkey = CONFIG_CPR_OTA_PASSKEY;
 static const char *TAG = "CPR_OTA";
