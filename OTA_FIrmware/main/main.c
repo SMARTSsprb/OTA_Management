@@ -30,15 +30,15 @@
 #include "services/gatt/ble_svc_gatt.h"
 
 /* =============================================================================
- * CPR MANIKIN IDENTITY & SECURITY CONFIGURATION ("CPR_10X" + High Security)
+ * MANIKIN IDENTITY & SECURITY CONFIGURATION ("Manikin_10X" + High Security)
  * =============================================================================
- * Each training manikin is uniquely identified (e.g. CPR_101, CPR_102, CPR_106).
+ * Each training manikin is uniquely identified in OTA mode (e.g. Manikin_101, Manikin_103).
  * Secure Pairing:
  *   - LE Secure Connections (ECDH AES-128)
  *   - MITM Protection enabled
  *   - 6-digit Passkey authentication enforced on GATT Control & Data chars
  * ============================================================================= */
-#define CPR_DEVICE_PREFIX "CPR_"
+#define CPR_DEVICE_PREFIX "Manikin_"
 
 #ifndef CONFIG_CPR_MANIKIN_ID
 #define CONFIG_CPR_MANIKIN_ID "103" /* Manikin 103 */
@@ -48,7 +48,7 @@
 #define CONFIG_CPR_OTA_PASSKEY 123456 /* Default 6-digit secure passkey */
 #endif
 
-static char s_device_name[32] = "CPR_103";
+static char s_device_name[32] = "Manikin_103";
 static uint8_t s_device_mac[6] = {0};
 static uint32_t s_passkey = CONFIG_CPR_OTA_PASSKEY;
 static const char *TAG = "CPR_OTA";
@@ -124,17 +124,17 @@ static void init_device_identity(void)
         s_device_name[sizeof(s_device_name) - 1] = '\0';
 #elif defined(CONFIG_CPR_MANIKIN_ID)
         if (strcmp(CONFIG_CPR_MANIKIN_ID, "AUTO") == 0) {
-            /* Auto-derive X from MAC: gives CPR_101 through CPR_109 */
+            /* Auto-derive X from MAC: gives Manikin_101 through Manikin_109 */
             uint8_t unit_digit = (s_device_mac[5] % 9) + 1;
-            snprintf(s_device_name, sizeof(s_device_name), "CPR_10%u", (unsigned int)unit_digit);
+            snprintf(s_device_name, sizeof(s_device_name), "Manikin_10%u", (unsigned int)unit_digit);
         } else {
-            /* Explicit ID defined (e.g. "106" -> "CPR_106", "101" -> "CPR_101") */
+            /* Explicit ID defined (e.g. "103" -> "Manikin_103", "101" -> "Manikin_101") */
             snprintf(s_device_name, sizeof(s_device_name), "%s%s", CPR_DEVICE_PREFIX, CONFIG_CPR_MANIKIN_ID);
         }
 #else
         /* Auto-derive X (1..9) from hardware MAC byte 5 */
         uint8_t unit_digit = (s_device_mac[5] % 9) + 1;
-        snprintf(s_device_name, sizeof(s_device_name), "CPR_10%u", (unsigned int)unit_digit);
+        snprintf(s_device_name, sizeof(s_device_name), "Manikin_10%u", (unsigned int)unit_digit);
 #endif
         ESP_LOGI(TAG, "Assigned default unique Manikin name: %s", s_device_name);
     }

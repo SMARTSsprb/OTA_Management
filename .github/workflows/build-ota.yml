@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           MANIKIN_ID="${{ github.event.inputs.manikin_id || '103' }}"
-          echo "Building firmware for Manikin ID: CPR_${MANIKIN_ID}"
+          echo "Building firmware for Manikin ID: Manikin_${MANIKIN_ID}"
           sed -i "s/#define CONFIG_CPR_MANIKIN_ID .*/#define CONFIG_CPR_MANIKIN_ID \"${MANIKIN_ID}\"/g" OTA_FIrmware/main/main.c
 
       - name: Build and Package with ESP-IDF

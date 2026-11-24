@@ -195,9 +195,11 @@ function waitStatus(timeoutMs = 12000) {
 /* ---------- Connection Management ---------- */
 async function connect() {
   try {
-    log('Scanning for CPR Manikins (CPR_10X)...');
+    log('Scanning for Manikins (Manikin_10X / CPR_10X)...');
     dev = await navigator.bluetooth.requestDevice({
       filters: [
+        { namePrefix: 'Manikin_' },
+        { namePrefix: 'Manikin_10' },
         { namePrefix: 'CPR_' },
         { namePrefix: 'CPR_10' },
         { name: 'Allreal_CPR' }
@@ -266,8 +268,8 @@ $('btnDisc').onclick = () => dev && dev.gatt.disconnect();
 $('btnSetName').onclick = async () => {
   if (!ctrlChar) return;
   const name = $('newDevName').value.trim();
-  if (!name.startsWith('CPR_')) {
-    alert('Unique Manikin name should follow the "CPR_10X" format (e.g. CPR_101, CPR_106).');
+  if (!name.startsWith('Manikin_') && !name.startsWith('CPR_')) {
+    alert('Unique Manikin name should follow the "Manikin_10X" or "CPR_10X" format (e.g. Manikin_103, CPR_103).');
     return;
   }
   try {

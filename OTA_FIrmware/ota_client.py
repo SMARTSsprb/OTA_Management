@@ -52,7 +52,7 @@ STATUS_MAP = {
     0xFF: "ERROR",
 }
 
-DEFAULT_PREFIXES = ("CPR_10", "CPR_", "Allreal_CPR")
+DEFAULT_PREFIXES = ("Manikin_", "Manikin_10", "CPR_10", "CPR_", "Allreal_CPR")
 
 
 async def scan_manikins(timeout=5.0):
