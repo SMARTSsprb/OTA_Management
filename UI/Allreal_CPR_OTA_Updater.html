@@ -164,7 +164,10 @@ if (!navigator.bluetooth) {
   $('btnConn').disabled = true;
 }
 
-/* ---------- ESP-IDF NimBLE Notification Handler ---------- */
+/* ---------- ESP-IDF NimBLE Notification Handler & Queue ---------- */
+const statusQueue = [];
+let otaStatusResolver = null;
+
 function onCtrlNotify(e) {
   const val = e.target.value;
   if (!val || val.byteLength === 0) return;
@@ -174,21 +177,30 @@ function onCtrlNotify(e) {
     bytesAcked = val.getUint32(1, true);
   }
   log(`Device notification: status=0x${status.toString(16).padStart(2,'0')} (acked: ${bytesAcked} B)`);
+
   if (otaStatusResolver) {
-    otaStatusResolver(status);
+    const r = otaStatusResolver;
     otaStatusResolver = null;
+    r(status);
+  } else {
+    statusQueue.push(status);
   }
 }
 
 function waitStatus(timeoutMs = 12000) {
+  if (statusQueue.length > 0) {
+    return Promise.resolve(statusQueue.shift());
+  }
   return new Promise((resolve, reject) => {
-    otaStatusResolver = resolve;
-    setTimeout(() => {
-      if (otaStatusResolver) {
-        otaStatusResolver = null;
-        reject(new Error('Timeout waiting for device status notification'));
-      }
+    const timer = setTimeout(() => {
+      otaStatusResolver = null;
+      reject(new Error('Timeout waiting for device status notification'));
     }, timeoutMs);
+
+    otaStatusResolver = (st) => {
+      clearTimeout(timer);
+      resolve(st);
+    };
   });
 }
 
@@ -344,16 +356,18 @@ async function update() {
 /* Update via ESP-IDF NimBLE Protocol */
 async function updateCustomNimBLE() {
   step(1);
+  statusQueue.length = 0; // Clear any old notifications
   const total = fw.length;
   log(`Starting OTA upload for ${dev.name} (${total} bytes)...`);
 
-  // 1. Send CMD_START + u32 LE size
+  // 1. Send CMD_START + u32 LE size (listen for status in parallel)
   const startPkt = new Uint8Array(5);
   startPkt[0] = CMD_START;
   new DataView(startPkt.buffer).setUint32(1, total, true);
-  await ctrlChar.writeValueWithResponse(startPkt);
 
-  const st = await waitStatus(10000);
+  const startPromise = waitStatus(10000);
+  await ctrlChar.writeValueWithResponse(startPkt);
+  const st = await startPromise;
   if (st !== ST_READY) throw new Error(`Device rejected start with status 0x${st.toString(16)}`);
 
   // 2. Stream Data Chunks
@@ -382,6 +396,9 @@ async function updateCustomNimBLE() {
     $('pct').textContent = pc.toFixed(1) + '%';
     $('spd').textContent = (speed / 1024).toFixed(1) + ' KB/s';
     $('eta').textContent = 'ETA: ' + Math.max(0, Math.round(eta)) + 's';
+
+    // Safe pacing to prevent Windows BLE buffer overrun
+    await new Promise(r => setTimeout(r, 6));
   }
 
   log('Firmware data transferred 100%! Verifying and finalizing...', 'o');
@@ -389,10 +406,11 @@ async function updateCustomNimBLE() {
 
   // 3. Send CMD_END
   const endPkt = new Uint8Array([CMD_END]);
+  const endPromise = waitStatus(15000);
   await ctrlChar.writeValueWithResponse(endPkt);
 
   try {
-    const endSt = await waitStatus(15000);
+    const endSt = await endPromise;
     if (endSt !== ST_DONE) throw new Error(`Device finalized with status 0x${endSt.toString(16)}`);
   } catch (e) {
     log('Device acknowledged and triggered reset (' + e.message + ')');
