@@ -88,12 +88,14 @@ async def resolve_target_device(target_name, timeout=5.0):
 
     if len(manikins) == 1:
         selected = manikins[0]
-        print(f"[INFO] Auto-detected unique Manikin: {selected.name} [{selected.address}] (RSSI: {selected.rssi} dBm)")
+        rssi_str = f"{getattr(selected, 'rssi', 'N/A')} dBm" if hasattr(selected, 'rssi') else ""
+        print(f"[INFO] Auto-detected unique Manikin: {selected.name} [{selected.address}] {rssi_str}")
         return selected
 
     print(f"\n[DISCOVERY] Found {len(manikins)} CPR Manikins:")
     for idx, d in enumerate(manikins, start=1):
-        print(f"  [{idx}] {d.name:<12} (MAC: {d.address}, RSSI: {d.rssi} dBm)")
+        rssi_val = getattr(d, 'rssi', 'N/A')
+        print(f"  [{idx}] {d.name:<12} (MAC: {d.address}, RSSI: {rssi_val})")
 
     # Prompt user
     if sys.stdin.isatty():
@@ -243,7 +245,8 @@ def main():
             print(f"\n{'DEVICE NAME':<16} {'MAC ADDRESS':<20} {'RSSI':<8}")
             print("-" * 46)
             for m in manikins:
-                print(f"{(m.name or 'Unknown'):<16} {m.address:<20} {m.rssi:<8} dBm")
+                rssi_val = f"{getattr(m, 'rssi', 'N/A')} dBm" if hasattr(m, 'rssi') else "N/A"
+                print(f"{(m.name or 'Unknown'):<16} {m.address:<20} {rssi_val:<8}")
             print()
         asyncio.run(run_scan())
         return
