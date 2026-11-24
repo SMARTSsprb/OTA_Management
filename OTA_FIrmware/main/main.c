@@ -359,15 +359,16 @@ static int gap_event(struct ble_gap_event *event, void *arg)
         break;
     }
     case BLE_GAP_EVENT_ENC_CHANGE:
-        ESP_LOGI(TAG, "Encryption changed: status=%d", event->enc_change.status);
-        break;
-    case BLE_GAP_EVENT_AUTH_COMPLETE:
-        if (event->auth_complete.status == 0) {
-            ESP_LOGI(TAG, "Secure Authentication Complete (Bonded: %d, Encrypted: %d)",
-                     event->auth_complete.bonded,
-                     event->auth_complete.authenticated);
+        if (event->enc_change.status == 0) {
+            struct ble_gap_conn_desc desc;
+            if (ble_gap_conn_find(event->enc_change.conn_handle, &desc) == 0) {
+                ESP_LOGI(TAG, "Secure Encryption / Pairing Complete (Bonded: %d, Authen: %d, Encrypted: %d)",
+                         desc.sec_state.bonded,
+                         desc.sec_state.authenticated,
+                         desc.sec_state.encrypted);
+            }
         } else {
-            ESP_LOGE(TAG, "Authentication FAILED: status=%d", event->auth_complete.status);
+            ESP_LOGE(TAG, "Authentication / Encryption FAILED: status=%d", event->enc_change.status);
         }
         break;
     case BLE_GAP_EVENT_REPEAT_PAIRING: {
