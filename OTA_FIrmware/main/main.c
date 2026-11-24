@@ -118,11 +118,11 @@ static void init_device_identity(void)
 
     /* 3. If no NVS configuration found, construct CPR_10X */
     if (!nvs_loaded) {
-#if defined(CONFIG_CPR_MANIKIN_NAME) && (sizeof(CONFIG_CPR_MANIKIN_NAME) > 1)
+#if defined(CONFIG_CPR_MANIKIN_NAME)
         /* Explicit name override defined at compile-time */
         strncpy(s_device_name, CONFIG_CPR_MANIKIN_NAME, sizeof(s_device_name) - 1);
         s_device_name[sizeof(s_device_name) - 1] = '\0';
-#elif defined(CONFIG_CPR_MANIKIN_ID) && (sizeof(CONFIG_CPR_MANIKIN_ID) > 1)
+#elif defined(CONFIG_CPR_MANIKIN_ID)
         if (strcmp(CONFIG_CPR_MANIKIN_ID, "AUTO") == 0) {
             /* Auto-derive X from MAC: gives CPR_101 through CPR_109 */
             uint8_t unit_digit = (s_device_mac[5] % 9) + 1;
